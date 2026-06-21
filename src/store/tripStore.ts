@@ -1,20 +1,24 @@
 import { create } from 'zustand'
 import type { TripParams, ItineraryData, ChecklistItem, OptimizationType } from '@/types'
-import { generateRoute } from '@/engine/routeGenerator'
+import { generateAllPlans } from '@/engine/routeGenerator'
 import { recalculateTime } from '@/engine/timeRecalculator'
 import { generateChecklist } from '@/engine/checklistGenerator'
+import { CHECKLIST_GROUPS, VEHICLE_LABELS, PREFERENCE_LABELS } from '@/types'
 
 interface TripStore {
   params: TripParams | null
-  itinerary: ItineraryData | null
+  alternatives: ItineraryData[]
+  selectedItineraryId: string | null
   checklist: ChecklistItem[]
   isGenerating: boolean
   setParams: (params: TripParams) => void
-  generate: (params: TripParams) => void
+  generatePlans: (params: TripParams) => void
+  selectItinerary: (id: string) => void
+  getSelectedItinerary: () => ItineraryData | null
   moveSpot: (spotId: string, fromDay: number, toDay: number, toIndex: number) => void
   applyOptimization: (type: OptimizationType) => void
   toggleChecklistItem: (id: string) => void
-  addChecklistItem: (category: string, name: string) => void
+  addChecklistItem: (group: ChecklistItem['group'], category: string, name: string) => void
   removeChecklistItem: (id: string) => void
   buildChecklist: () => void
   exportChecklist: () => string
@@ -22,23 +26,40 @@ interface TripStore {
 
 export const useTripStore = create<TripStore>((set, get) => ({
   params: null,
-  itinerary: null,
+  alternatives: [],
+  selectedItineraryId: null,
   checklist: [],
   isGenerating: false,
 
   setParams: (params) => set({ params }),
 
-  generate: (params) => {
-    set({ isGenerating: true, params, checklist: [] })
+  generatePlans: (params) => {
+    set({ isGenerating: true, params, alternatives: [], selectedItineraryId: null, checklist: [] })
     setTimeout(() => {
-      const itinerary = generateRoute(params)
-      const checklist = generateChecklist(itinerary)
-      set({ itinerary, checklist, isGenerating: false })
+      const alternatives = generateAllPlans(params)
+      set({ alternatives, isGenerating: false })
     }, 2000)
   },
 
+  selectItinerary: (id) => {
+    const { alternatives } = get()
+    const selected = alternatives.find((a) => a.id === id)
+    if (selected) {
+      const checklist = generateChecklist(selected)
+      set({ selectedItineraryId: id, checklist })
+    }
+  },
+
+  getSelectedItinerary: () => {
+    const { alternatives, selectedItineraryId } = get()
+    return alternatives.find((a) => a.id === selectedItineraryId) || null
+  },
+
   moveSpot: (spotId, fromDay, toDay, toIndex) => {
-    const { itinerary } = get()
+    const { alternatives, selectedItineraryId } = get()
+    if (!selectedItineraryId) return
+
+    const itinerary = alternatives.find((a) => a.id === selectedItineraryId)
     if (!itinerary) return
 
     const newRoutes = itinerary.routes.map((route) => ({
@@ -57,11 +78,17 @@ export const useTripStore = create<TripStore>((set, get) => ({
     toRoute.spots.splice(toIndex, 0, movedSpot)
 
     const updated = recalculateTime({ ...itinerary, routes: newRoutes })
-    set({ itinerary: updated })
+
+    set((state) => ({
+      alternatives: state.alternatives.map((a) => (a.id === selectedItineraryId ? updated : a)),
+    }))
   },
 
   applyOptimization: (type) => {
-    const { itinerary } = get()
+    const { alternatives, selectedItineraryId } = get()
+    if (!selectedItineraryId) return
+
+    const itinerary = alternatives.find((a) => a.id === selectedItineraryId)
     if (!itinerary) return
 
     const newRoutes = itinerary.routes.map((route) => ({
@@ -119,6 +146,7 @@ export const useTripStore = create<TripStore>((set, get) => ({
               duration: 1,
               mileage: 0,
               description: '当地特色美食，休息用餐',
+              timeSegment: 'lunch',
             })
           }
         }
@@ -126,7 +154,12 @@ export const useTripStore = create<TripStore>((set, get) => ({
     }
 
     const updated = recalculateTime({ ...itinerary, routes: newRoutes })
-    set({ itinerary: updated })
+    const checklist = generateChecklist(updated)
+
+    set((state) => ({
+      alternatives: state.alternatives.map((a) => (a.id === selectedItineraryId ? updated : a)),
+      checklist,
+    }))
   },
 
   toggleChecklistItem: (id) => {
@@ -137,12 +170,13 @@ export const useTripStore = create<TripStore>((set, get) => ({
     }))
   },
 
-  addChecklistItem: (category, name) => {
+  addChecklistItem: (group, category, name) => {
     set((state) => ({
       checklist: [
         ...state.checklist,
         {
           id: `custom-${Date.now()}`,
+          group,
           category,
           name,
           checked: false,
@@ -159,25 +193,42 @@ export const useTripStore = create<TripStore>((set, get) => ({
   },
 
   buildChecklist: () => {
-    const { itinerary } = get()
+    const itinerary = get().getSelectedItinerary()
     if (!itinerary) return
     const checklist = generateChecklist(itinerary)
     set({ checklist })
   },
 
   exportChecklist: () => {
-    const { checklist, itinerary } = get()
+    const { checklist } = get()
+    const itinerary = get().getSelectedItinerary()
     if (!itinerary) {
       let text = '🚗 路书行 - 出发清单\n\n'
-      const grouped: Record<string, typeof checklist> = {}
+      const groupedByGroup: Record<string, { groupLabel: string; categories: Record<string, typeof checklist> }> = {}
       checklist.forEach((item) => {
-        if (!grouped[item.category]) grouped[item.category] = []
-        grouped[item.category].push(item)
+        const groupInfo = CHECKLIST_GROUPS[item.group] || { label: item.group, icon: '', order: 99 }
+        if (!groupedByGroup[item.group]) {
+          groupedByGroup[item.group] = { groupLabel: groupInfo.label, categories: {} }
+        }
+        if (!groupedByGroup[item.group].categories[item.category]) {
+          groupedByGroup[item.group].categories[item.category] = []
+        }
+        groupedByGroup[item.group].categories[item.category].push(item)
       })
-      Object.entries(grouped).forEach(([category, items]) => {
-        text += `【${category}】\n`
-        items.forEach((item) => {
-          text += `  ${item.checked ? '✅' : '⬜'} ${item.name}\n`
+      Object.entries(groupedByGroup).sort((a, b) => {
+        const orderA = CHECKLIST_GROUPS[a[0]]?.order || 99
+        const orderB = CHECKLIST_GROUPS[b[0]]?.order || 99
+        return orderA - orderB
+      }).forEach(([_, data]) => {
+        text += `【${data.groupLabel}】\n`
+        Object.entries(data.categories).forEach(([cat, items]) => {
+          if (Object.keys(data.categories).length > 1) {
+            text += `  · ${cat}\n`
+          }
+          items.forEach((item) => {
+            const indent = Object.keys(data.categories).length > 1 ? '    ' : '  '
+            text += `${indent}${item.checked ? '✅' : '⬜'} ${item.name}\n`
+          })
         })
         text += '\n'
       })
@@ -186,20 +237,14 @@ export const useTripStore = create<TripStore>((set, get) => ({
 
     const totalMileage = itinerary.routes.reduce((sum, r) => sum + r.totalMileage, 0)
     const totalDriveHours = itinerary.routes.reduce((sum, r) => sum + r.drivingDuration, 0)
-    const vehicleLabel =
-      itinerary.params.vehicleType === 'fuel' ? '燃油车' :
-      itinerary.params.vehicleType === 'electric' ? '电动车' : '混动车'
-    const preferenceLabels: Record<string, string> = {
-      scenic: '看景',
-      family: '亲子',
-      camping: '露营',
-      less_mountain: '少走山路',
-    }
+    const vehicleLabel = VEHICLE_LABELS[itinerary.params.vehicleType]
     const preferenceStr = itinerary.params.preferences
-      .map((p) => preferenceLabels[p] || p)
+      .map((p) => PREFERENCE_LABELS[p] || p)
       .join('、') || '无'
 
-    let header = `🚗 路书行 - 出发清单
+    let header = `🚗 路书行 - 出发清单 (${itinerary.styleName})
+━━━━━━━━━━━━━━━━━━━━━━━━
+${itinerary.styleDesc}
 ━━━━━━━━━━━━━━━━━━━━━━━━
 📍 出发地：${itinerary.params.departure}
 📅 出行天数：${itinerary.params.days}天
@@ -225,17 +270,33 @@ export const useTripStore = create<TripStore>((set, get) => ({
 📋 物品清单：
 `
 
-    const grouped: Record<string, typeof checklist> = {}
+    const groupedByGroup: Record<string, { groupLabel: string; categories: Record<string, typeof checklist> }> = {}
     checklist.forEach((item) => {
-      if (!grouped[item.category]) grouped[item.category] = []
-      grouped[item.category].push(item)
+      const groupInfo = CHECKLIST_GROUPS[item.group] || { label: item.group, icon: '', order: 99 }
+      if (!groupedByGroup[item.group]) {
+        groupedByGroup[item.group] = { groupLabel: groupInfo.label, categories: {} }
+      }
+      if (!groupedByGroup[item.group].categories[item.category]) {
+        groupedByGroup[item.group].categories[item.category] = []
+      }
+      groupedByGroup[item.group].categories[item.category].push(item)
     })
 
     let text = header
-    Object.entries(grouped).forEach(([category, items]) => {
-      text += `\n【${category}】\n`
-      items.forEach((item) => {
-        text += `  ${item.checked ? '✅' : '⬜'} ${item.name}\n`
+    Object.entries(groupedByGroup).sort((a, b) => {
+      const orderA = CHECKLIST_GROUPS[a[0]]?.order || 99
+      const orderB = CHECKLIST_GROUPS[b[0]]?.order || 99
+      return orderA - orderB
+    }).forEach(([_, data]) => {
+      text += `\n【${data.groupLabel}】\n`
+      Object.entries(data.categories).forEach(([cat, items]) => {
+        if (Object.keys(data.categories).length > 1) {
+          text += `  · ${cat}\n`
+        }
+        items.forEach((item) => {
+          const indent = Object.keys(data.categories).length > 1 ? '    ' : '  '
+          text += `${indent}${item.checked ? '✅' : '⬜'} ${item.name}\n`
+        })
       })
     })
 

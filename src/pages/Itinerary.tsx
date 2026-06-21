@@ -17,11 +17,12 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Car, Hotel, UtensilsCrossed, ChevronDown, ChevronRight, ArrowRight, GripVertical } from 'lucide-react'
+import { Car, Hotel, UtensilsCrossed, ChevronDown, ChevronRight, ArrowRight, GripVertical, MapPin, Clock } from 'lucide-react'
 import { useTripStore } from '@/store/tripStore'
 import SpotCard from '@/components/SpotCard'
 import WarningBanner from '@/components/WarningBanner'
-import type { OptimizationType, Spot } from '@/types'
+import { TIME_SEGMENT_LABELS, PLAN_STYLES } from '@/types'
+import type { OptimizationType, Spot, TimeSegment } from '@/types'
 
 const OPTIMIZATIONS: { type: OptimizationType; icon: React.ReactNode; label: string; desc: string }[] = [
   {
@@ -55,6 +56,8 @@ interface DayContainerProps {
   onToggle: () => void
   activeSpotId: string | null
   renderSortable: (spots: Spot[]) => React.ReactNode
+  renderTimeline: (spots: Spot[]) => React.ReactNode
+  showTimeline: boolean
 }
 
 function DayContainer({
@@ -68,6 +71,8 @@ function DayContainer({
   onToggle,
   activeSpotId,
   renderSortable,
+  renderTimeline,
+  showTimeline,
 }: DayContainerProps) {
   const { setNodeRef } = useDroppable({ id: `day-${day}` })
 
@@ -110,16 +115,28 @@ function DayContainer({
             className="overflow-hidden"
           >
             <div className="px-4 pb-3">
-              <div className="flex items-center gap-2 mb-2">
-                <ArrowRight size={12} className="text-sand-300" />
-                <span className="text-xs text-sand-400">行程路线</span>
-              </div>
-              <SortableContext
-                items={spots.map((s) => s.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {renderSortable(spots)}
-              </SortableContext>
+              {showTimeline ? (
+                <div className="mb-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock size={12} className="text-sand-300" />
+                    <span className="text-xs text-sand-400">时间轴</span>
+                  </div>
+                  {renderTimeline(spots)}
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <ArrowRight size={12} className="text-sand-300" />
+                    <span className="text-xs text-sand-400">行程路线（可拖拽调整）</span>
+                  </div>
+                  <SortableContext
+                    items={spots.map((s) => s.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {renderSortable(spots)}
+                  </SortableContext>
+                </>
+              )}
             </div>
           </motion.div>
         ) : activeSpotId ? (
@@ -146,14 +163,79 @@ function DayContainer({
   )
 }
 
+function TimelineView({ spots }: { spots: Spot[] }) {
+  const segments: TimeSegment[] = ['morning', 'lunch', 'afternoon', 'evening', 'hotel']
+
+  const grouped = useMemo(() => {
+    const result: Record<TimeSegment, Spot[]> = {
+      morning: [],
+      lunch: [],
+      afternoon: [],
+      evening: [],
+      hotel: [],
+    }
+    spots.forEach((spot) => {
+      result[spot.timeSegment].push(spot)
+    })
+    return result
+  }, [spots])
+
+  return (
+    <div className="relative">
+      <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-sand-100" />
+      {segments.map((segment, idx) => {
+        const items = grouped[segment]
+        const style = TIME_SEGMENT_LABELS[segment]
+        if (items.length === 0) return null
+
+        return (
+          <div key={segment} className="relative mb-3 last:mb-0">
+            <div className="flex items-start gap-3">
+              <div className={`w-3 h-3 rounded-full mt-1.5 relative z-10 ${
+                segment === 'morning' ? 'bg-amber-400' :
+                segment === 'lunch' ? 'bg-sunset-400' :
+                segment === 'afternoon' ? 'bg-forest-400' :
+                segment === 'evening' ? 'bg-sand-400' :
+                'bg-sand-500'
+              }`} />
+              <div className="flex-1">
+                <div className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full mb-1.5 ${style.color}`}>
+                  {style.label}
+                </div>
+                <div className="space-y-1.5">
+                  {items.map((spot) => (
+                    <div
+                      key={spot.id}
+                      className="flex items-center justify-between bg-sand-50 rounded-lg px-3 py-2 border border-sand-100"
+                    >
+                      <div className="flex items-center gap-2">
+                        <MapPin size={12} className="text-sand-400" />
+                        <span className="text-sm text-sand-700">{spot.name}</span>
+                      </div>
+                      <div className="text-xs text-sand-500">{spot.arrivalTime}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function Itinerary() {
   const navigate = useNavigate()
-  const { itinerary, moveSpot, applyOptimization } = useTripStore()
+  const { getSelectedItinerary, moveSpot, applyOptimization } = useTripStore()
+  const itinerary = getSelectedItinerary()
+
   const [expandedDay, setExpandedDay] = useState<number | null>(1)
   const [activeSpotId, setActiveSpotId] = useState<string | null>(null)
   const [showOptimizations, setShowOptimizations] = useState(false)
   const [optimizingType, setOptimizingType] = useState<OptimizationType | null>(null)
   const [overDay, setOverDay] = useState<number | null>(null)
+  const [showTimeline, setShowTimeline] = useState(true)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -177,12 +259,13 @@ export default function Itinerary() {
             <path d="M28 40 L52 40 M40 28 L40 52" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
         </div>
-        <p className="text-sand-400 text-sm text-center mb-4">还没有行程方案</p>
+        <p className="text-sand-400 text-sm text-center mb-2">还没有选择方案</p>
+        <p className="text-sand-300 text-xs text-center mb-4">请先在首页生成并选择一套路书方案</p>
         <button
           onClick={() => navigate('/')}
           className="px-6 py-2.5 bg-forest-500 text-white rounded-xl text-sm font-medium shadow-sm hover:shadow-md transition-all"
         >
-          去生成路书
+          去选择方案
         </button>
       </div>
     )
@@ -280,11 +363,36 @@ export default function Itinerary() {
     </div>
   )
 
+  const renderTimelineSpots = (spots: Spot[]) => (
+    <TimelineView spots={spots} />
+  )
+
   return (
     <div className="min-h-screen bg-sand-50">
       <div className="px-4 pt-6 pb-4">
-        <h1 className="text-xl font-display font-bold text-sand-800">路书编辑</h1>
-        <p className="text-sm text-sand-400 mt-0.5">拖拽景点调整行程</p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-display font-bold text-sand-800">路书编辑</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                itinerary.style === 'relaxed' ? 'bg-forest-100 text-forest-700' :
+                itinerary.style === 'scenic' ? 'bg-sunset-100 text-sunset-700' :
+                'bg-sand-100 text-sand-700'
+              }`}>
+                {PLAN_STYLES[itinerary.style].icon} {itinerary.styleName}
+              </span>
+              <span className="text-xs text-sand-400">拖拽景点调整行程</span>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowTimeline(!showTimeline)}
+            className={`text-xs px-2.5 py-1.5 rounded-lg transition-colors ${
+              showTimeline ? 'bg-forest-500 text-white' : 'bg-sand-100 text-sand-500'
+            }`}
+          >
+            {showTimeline ? '时间轴' : '列表'}
+          </button>
+        </div>
       </div>
 
       {itinerary.warnings.length > 0 && (
@@ -314,6 +422,8 @@ export default function Itinerary() {
               onToggle={() => toggleDay(route.day)}
               activeSpotId={activeSpotId}
               renderSortable={renderSortableSpots}
+              renderTimeline={renderTimelineSpots}
+              showTimeline={showTimeline}
             />
           ))}
         </div>

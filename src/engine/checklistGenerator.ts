@@ -1,109 +1,156 @@
 import type { ItineraryData, ChecklistItem } from '@/types'
+import type { ChecklistItem as TChecklistItem } from '@/types'
 
-const BASE_CATEGORIES: { category: string; items: string[] }[] = [
-  {
-    category: '证件资料',
-    items: ['身份证', '驾驶证', '行驶证', '车辆保险单', '身份证复印件'],
-  },
-  {
-    category: '车辆检查',
-    items: ['轮胎胎压检查', '机油/冷却液', '刹车系统', '灯光检查', '备胎及工具', '车载充电器'],
-  },
-  {
-    category: '导航通讯',
-    items: ['手机支架', '车载充电线', '离线地图下载', '对讲机(多车)'],
-  },
-  {
-    category: '应急物品',
-    items: ['急救包', '三角警示牌', '灭火器', '拖车绳', '搭电线', '反光背心'],
-  },
+type GroupType = TChecklistItem['group']
+
+interface ChecklistEntry {
+  group: GroupType
+  category: string
+  name: string
+}
+
+const BASE_ITEMS: ChecklistEntry[] = [
+  { group: 'documents', category: '证件资料', name: '身份证' },
+  { group: 'documents', category: '证件资料', name: '驾驶证' },
+  { group: 'documents', category: '证件资料', name: '行驶证' },
+  { group: 'documents', category: '证件资料', name: '车辆保险单' },
+  { group: 'documents', category: '证件资料', name: '身份证复印件' },
+  { group: 'documents', category: '导航通讯', name: '离线地图下载' },
+  { group: 'documents', category: '导航通讯', name: '对讲机(多车出行)' },
+
+  { group: 'vehicle', category: '车辆检查', name: '轮胎胎压检查' },
+  { group: 'vehicle', category: '车辆检查', name: '机油/冷却液检查' },
+  { group: 'vehicle', category: '车辆检查', name: '刹车系统检查' },
+  { group: 'vehicle', category: '车辆检查', name: '灯光系统检查' },
+  { group: 'vehicle', category: '车辆检查', name: '备胎及换胎工具' },
+  { group: 'vehicle', category: '车载装备', name: '手机支架' },
+  { group: 'vehicle', category: '车载装备', name: '车载充电器' },
+  { group: 'vehicle', category: '车载装备', name: '行车记录仪' },
+
+  { group: 'energy', category: '补能用品', name: '加油卡' },
+  { group: 'energy', category: '补能用品', name: '车载充电线' },
+  { group: 'energy', category: '补能用品', name: '充电宝' },
+
+  { group: 'clothing', category: '保暖衣物', name: '冲锋衣' },
+  { group: 'clothing', category: '保暖衣物', name: '抓绒衣' },
+  { group: 'clothing', category: '保暖衣物', name: '保暖内衣' },
+  { group: 'clothing', category: '保暖衣物', name: '手套' },
+  { group: 'clothing', category: '保暖衣物', name: '围巾' },
+  { group: 'clothing', category: '防晒用品', name: '防晒霜SPF50+' },
+  { group: 'clothing', category: '防晒用品', name: '太阳镜' },
+  { group: 'clothing', category: '防晒用品', name: '遮阳帽' },
+  { group: 'clothing', category: '防晒用品', name: '冰袖' },
+  { group: 'clothing', category: '换洗衣物', name: '短袖T恤' },
+  { group: 'clothing', category: '换洗衣物', name: '长裤/短裤' },
+  { group: 'clothing', category: '换洗衣物', name: '舒适运动鞋' },
+
+  { group: 'emergency', category: '急救用品', name: '急救包' },
+  { group: 'emergency', category: '急救用品', name: '创可贴' },
+  { group: 'emergency', category: '急救用品', name: '退烧药' },
+  { group: 'emergency', category: '急救用品', name: '肠胃药' },
+  { group: 'emergency', category: '急救用品', name: '晕车药' },
+  { group: 'emergency', category: '急救用品', name: '防蚊液' },
+  { group: 'emergency', category: '车辆应急', name: '三角警示牌' },
+  { group: 'emergency', category: '车辆应急', name: '灭火器' },
+  { group: 'emergency', category: '车辆应急', name: '拖车绳' },
+  { group: 'emergency', category: '车辆应急', name: '搭电线' },
+  { group: 'emergency', category: '车辆应急', name: '反光背心' },
+
+  { group: 'other', category: '生活用品', name: '洗漱用品' },
+  { group: 'other', category: '生活用品', name: '保温杯' },
+  { group: 'other', category: '生活用品', name: '纸巾/湿巾' },
+  { group: 'other', category: '生活用品', name: '垃圾袋' },
 ]
 
-const WEATHER_ITEMS: { category: string; items: string[] }[] = [
-  {
-    category: '保暖衣物',
-    items: ['冲锋衣', '抓绒衣', '保暖内衣', '手套', '围巾'],
-  },
-  {
-    category: '防晒用品',
-    items: ['防晒霜SPF50+', '太阳镜', '遮阳帽', '冰袖'],
-  },
+const FAMILY_ITEMS: ChecklistEntry[] = [
+  { group: 'family', category: '儿童用品', name: '儿童安全座椅' },
+  { group: 'family', category: '儿童用品', name: '儿童推车' },
+  { group: 'family', category: '儿童用品', name: '玩具/绘本' },
+  { group: 'family', category: '儿童用品', name: '儿童专用餐具' },
+  { group: 'family', category: '儿童用品', name: '尿不湿/湿巾' },
+  { group: 'family', category: '儿童用品', name: '儿童常用药品' },
+  { group: 'family', category: '食品饮料', name: '零食/水果' },
+  { group: 'family', category: '食品饮料', name: '牛奶/酸奶' },
+  { group: 'family', category: '食品饮料', name: '保温饭盒' },
 ]
 
-const CAMPING_ITEMS: { category: string; items: string[] }[] = [
-  {
-    category: '露营装备',
-    items: ['帐篷', '睡袋', '防潮垫', '营地灯', '折叠桌椅', '炊具套装', '气罐', '打火机'],
-  },
+const CAMPING_ITEMS: ChecklistEntry[] = [
+  { group: 'camping', category: '露营装备', name: '帐篷' },
+  { group: 'camping', category: '露营装备', name: '睡袋' },
+  { group: 'camping', category: '露营装备', name: '防潮垫' },
+  { group: 'camping', category: '露营装备', name: '营地灯' },
+  { group: 'camping', category: '露营装备', name: '折叠桌椅' },
+  { group: 'camping', category: '露营装备', name: '天幕' },
+  { group: 'camping', category: '炊具用品', name: '卡式炉' },
+  { group: 'camping', category: '炊具用品', name: '气罐' },
+  { group: 'camping', category: '炊具用品', name: '锅具套装' },
+  { group: 'camping', category: '炊具用品', name: '餐具' },
+  { group: 'camping', category: '炊具用品', name: '打火机/火柴' },
+  { group: 'camping', category: '其他露营', name: '露营灯' },
+  { group: 'camping', category: '其他露营', name: '折叠水桶' },
+  { group: 'camping', category: '其他露营', name: '防蚊网' },
 ]
 
-const FAMILY_ITEMS: { category: string; items: string[] }[] = [
-  {
-    category: '亲子用品',
-    items: ['儿童安全座椅', '零食饮料', '玩具/绘本', '儿童常用药品', '换洗衣物'],
-  },
-]
-
-const ELECTRIC_ITEMS: { category: string; items: string[] }[] = [
-  {
-    category: '充电相关',
-    items: ['充电卡/APP', '便携充电枪', '充电延长线', '充电桩地图'],
-  },
+const ELECTRIC_ITEMS: ChecklistEntry[] = [
+  { group: 'energy', category: '电动车补能', name: '充电卡/充电APP' },
+  { group: 'energy', category: '电动车补能', name: '便携充电枪' },
+  { group: 'energy', category: '电动车补能', name: '充电延长线' },
+  { group: 'energy', category: '电动车补能', name: '充电桩离线地图' },
+  { group: 'energy', category: '电动车补能', name: '放电插座(V2L)' },
 ]
 
 export function generateChecklist(itinerary: ItineraryData): ChecklistItem[] {
   const items: ChecklistItem[] = []
   let idCounter = 0
 
-  const addItem = (category: string, name: string) => {
+  const addEntry = (entry: ChecklistEntry) => {
     items.push({
       id: `cl-${idCounter++}`,
-      category,
-      name,
+      group: entry.group,
+      category: entry.category,
+      name: entry.name,
       checked: false,
       autoGenerated: true,
     })
   }
 
-  BASE_CATEGORIES.forEach((cat) => {
-    cat.items.forEach((name) => addItem(cat.category, name))
-  })
-
-  WEATHER_ITEMS.forEach((cat) => {
-    cat.items.forEach((name) => addItem(cat.category, name))
-  })
-
-  if (itinerary.params.preferences.includes('camping')) {
-    CAMPING_ITEMS.forEach((cat) => {
-      cat.items.forEach((name) => addItem(cat.category, name))
-    })
-  }
+  BASE_ITEMS.forEach(addEntry)
 
   if (itinerary.params.preferences.includes('family')) {
-    FAMILY_ITEMS.forEach((cat) => {
-      cat.items.forEach((name) => addItem(cat.category, name))
-    })
+    FAMILY_ITEMS.forEach(addEntry)
+  }
+
+  if (itinerary.params.preferences.includes('camping')) {
+    CAMPING_ITEMS.forEach(addEntry)
   }
 
   if (itinerary.params.vehicleType === 'electric') {
-    ELECTRIC_ITEMS.forEach((cat) => {
-      cat.items.forEach((name) => addItem(cat.category, name))
-    })
+    ELECTRIC_ITEMS.forEach(addEntry)
   }
 
   const totalMileage = itinerary.routes.reduce((sum, r) => sum + r.totalMileage, 0)
   if (totalMileage > 1000) {
-    addItem('车辆检查', '建议出行前做一次全面保养')
+    addEntry({ group: 'vehicle', category: '长途建议', name: '出行前做一次全面保养' })
   }
 
   const maxDayMileage = Math.max(...itinerary.routes.map((r) => r.totalMileage))
   if (maxDayMileage > 400) {
-    addItem('应急物品', '建议携带备用油桶(燃油车)')
+    if (itinerary.params.vehicleType === 'fuel') {
+      addEntry({ group: 'energy', category: '燃油补能', name: '备用油桶(合规)' })
+    } else if (itinerary.params.vehicleType === 'hybrid') {
+      addEntry({ group: 'energy', category: '补能建议', name: '沿途加油站标记' })
+    }
   }
 
   if (itinerary.params.days > 3) {
-    addItem('生活用品', '洗衣液/晾衣绳')
-    addItem('生活用品', '多功能插座')
+    addEntry({ group: 'other', category: '生活用品', name: '洗衣液/晾衣绳' })
+    addEntry({ group: 'other', category: '生活用品', name: '多功能插线板' })
+    addEntry({ group: 'other', category: '生活用品', name: '一次性用品' })
+  }
+
+  if (itinerary.params.days > 5) {
+    addEntry({ group: 'other', category: '生活用品', name: '折叠洗衣盆' })
+    addEntry({ group: 'other', category: '生活用品', name: '衣物收纳袋' })
   }
 
   return items
