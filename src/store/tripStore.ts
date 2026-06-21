@@ -29,10 +29,11 @@ export const useTripStore = create<TripStore>((set, get) => ({
   setParams: (params) => set({ params }),
 
   generate: (params) => {
-    set({ isGenerating: true, params })
+    set({ isGenerating: true, params, checklist: [] })
     setTimeout(() => {
       const itinerary = generateRoute(params)
-      set({ itinerary, isGenerating: false })
+      const checklist = generateChecklist(itinerary)
+      set({ itinerary, checklist, isGenerating: false })
     }, 2000)
   },
 
@@ -166,11 +167,65 @@ export const useTripStore = create<TripStore>((set, get) => ({
 
   exportChecklist: () => {
     const { checklist, itinerary } = get()
-    const header = itinerary
-      ? `🚗 路书行 - 出发清单\n📍 出发地：${itinerary.params.departure}\n📅 天数：${itinerary.params.days}天\n\n`
-      : '🚗 路书行 - 出发清单\n\n'
+    if (!itinerary) {
+      let text = '🚗 路书行 - 出发清单\n\n'
+      const grouped: Record<string, typeof checklist> = {}
+      checklist.forEach((item) => {
+        if (!grouped[item.category]) grouped[item.category] = []
+        grouped[item.category].push(item)
+      })
+      Object.entries(grouped).forEach(([category, items]) => {
+        text += `【${category}】\n`
+        items.forEach((item) => {
+          text += `  ${item.checked ? '✅' : '⬜'} ${item.name}\n`
+        })
+        text += '\n'
+      })
+      return text
+    }
 
-    const grouped: Record<string, ChecklistItem[]> = {}
+    const totalMileage = itinerary.routes.reduce((sum, r) => sum + r.totalMileage, 0)
+    const totalDriveHours = itinerary.routes.reduce((sum, r) => sum + r.drivingDuration, 0)
+    const vehicleLabel =
+      itinerary.params.vehicleType === 'fuel' ? '燃油车' :
+      itinerary.params.vehicleType === 'electric' ? '电动车' : '混动车'
+    const preferenceLabels: Record<string, string> = {
+      scenic: '看景',
+      family: '亲子',
+      camping: '露营',
+      less_mountain: '少走山路',
+    }
+    const preferenceStr = itinerary.params.preferences
+      .map((p) => preferenceLabels[p] || p)
+      .join('、') || '无'
+
+    let header = `🚗 路书行 - 出发清单
+━━━━━━━━━━━━━━━━━━━━━━━━
+📍 出发地：${itinerary.params.departure}
+📅 出行天数：${itinerary.params.days}天
+👥 同行人数：${itinerary.params.companions}人
+🚙 车辆类型：${vehicleLabel}
+⏱️ 每日驾驶：${itinerary.params.dailyDriveHours}小时
+🎯 出行偏好：${preferenceStr}
+📊 总里程：约 ${totalMileage} km
+⏰ 总驾驶时长：约 ${Math.round(totalDriveHours)} 小时
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+📅 每日行程概览：
+`
+    itinerary.routes.forEach((route) => {
+      const scenicSpots = route.spots.filter((s) => s.type === 'scenic').map((s) => s.name).join('、')
+      header += `  D${route.day} (${route.date})：${route.totalMileage}km · ${route.drivingDuration}h驾驶
+    景点：${scenicSpots || '无'}
+`
+    })
+
+    header += `
+━━━━━━━━━━━━━━━━━━━━━━━━
+📋 物品清单：
+`
+
+    const grouped: Record<string, typeof checklist> = {}
     checklist.forEach((item) => {
       if (!grouped[item.category]) grouped[item.category] = []
       grouped[item.category].push(item)
@@ -178,11 +233,10 @@ export const useTripStore = create<TripStore>((set, get) => ({
 
     let text = header
     Object.entries(grouped).forEach(([category, items]) => {
-      text += `【${category}】\n`
+      text += `\n【${category}】\n`
       items.forEach((item) => {
         text += `  ${item.checked ? '✅' : '⬜'} ${item.name}\n`
       })
-      text += '\n'
     })
 
     return text

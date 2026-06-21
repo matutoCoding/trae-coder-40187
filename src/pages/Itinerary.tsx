@@ -1,25 +1,27 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   DndContext,
-  closestCenter,
   PointerSensor,
   useSensor,
   useSensors,
   DragOverlay,
+  useDroppable,
+  pointerWithin,
   type DragEndEvent,
   type DragStartEvent,
+  type DragOverEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Car, Hotel, UtensilsCrossed, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react'
+import { Car, Hotel, UtensilsCrossed, ChevronDown, ChevronRight, ArrowRight, GripVertical } from 'lucide-react'
 import { useTripStore } from '@/store/tripStore'
 import SpotCard from '@/components/SpotCard'
 import WarningBanner from '@/components/WarningBanner'
-import type { OptimizationType } from '@/types'
+import type { OptimizationType, Spot } from '@/types'
 
 const OPTIMIZATIONS: { type: OptimizationType; icon: React.ReactNode; label: string; desc: string }[] = [
   {
@@ -42,17 +44,129 @@ const OPTIMIZATIONS: { type: OptimizationType; icon: React.ReactNode; label: str
   },
 ]
 
+interface DayContainerProps {
+  day: number
+  date: string
+  totalMileage: number
+  drivingDuration: number
+  spots: Spot[]
+  isExpanded: boolean
+  isOver: boolean
+  onToggle: () => void
+  activeSpotId: string | null
+  renderSortable: (spots: Spot[]) => React.ReactNode
+}
+
+function DayContainer({
+  day,
+  date,
+  totalMileage,
+  drivingDuration,
+  spots,
+  isExpanded,
+  isOver,
+  onToggle,
+  activeSpotId,
+  renderSortable,
+}: DayContainerProps) {
+  const { setNodeRef } = useDroppable({ id: `day-${day}` })
+
+  return (
+    <motion.div
+      ref={setNodeRef}
+      layout
+      className={`rounded-2xl border overflow-hidden shadow-sm transition-all duration-200 ${
+        isOver ? 'border-forest-400 bg-forest-50/50 ring-2 ring-forest-200' : 'border-sand-100 bg-white'
+      }`}
+    >
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 px-4 py-3"
+      >
+        <span className="bg-forest-500 text-white text-xs font-medium px-2 py-0.5 rounded-full">
+          D{day}
+        </span>
+        <div className="flex-1 text-left">
+          <div className="text-sm font-medium text-sand-700">{date}</div>
+          <div className="text-xs text-sand-400">
+            {totalMileage}km · {drivingDuration}h驾驶
+          </div>
+        </div>
+        {isExpanded ? (
+          <ChevronDown size={16} className="text-sand-400" />
+        ) : (
+          <ChevronRight size={16} className="text-sand-400" />
+        )}
+      </button>
+
+      <AnimatePresence mode="popLayout">
+        {isExpanded ? (
+          <motion.div
+            key="expanded"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <ArrowRight size={12} className="text-sand-300" />
+                <span className="text-xs text-sand-400">行程路线</span>
+              </div>
+              <SortableContext
+                items={spots.map((s) => s.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {renderSortable(spots)}
+              </SortableContext>
+            </div>
+          </motion.div>
+        ) : activeSpotId ? (
+          <motion.div
+            key="collapsed-drop"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 py-2">
+              <div className={`flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed transition-all ${
+                isOver ? 'border-forest-400 bg-forest-50' : 'border-sand-200 bg-sand-50'
+              }`}>
+                <span className="text-xs text-sand-400">
+                  {isOver ? `松开放置到 D${day}` : `拖拽到此处添加到 D${day}`}
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
 export default function Itinerary() {
-  const navigate = useNavigateStore()
+  const navigate = useNavigate()
   const { itinerary, moveSpot, applyOptimization } = useTripStore()
   const [expandedDay, setExpandedDay] = useState<number | null>(1)
   const [activeSpotId, setActiveSpotId] = useState<string | null>(null)
   const [showOptimizations, setShowOptimizations] = useState(false)
   const [optimizingType, setOptimizingType] = useState<OptimizationType | null>(null)
+  const [overDay, setOverDay] = useState<number | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   )
+
+  const activeSpot = useMemo(() => {
+    if (!itinerary || !activeSpotId) return null
+    for (const route of itinerary.routes) {
+      const spot = route.spots.find((s) => s.id === activeSpotId)
+      if (spot) return spot
+    }
+    return null
+  }, [itinerary, activeSpotId])
 
   if (!itinerary) {
     return (
@@ -78,8 +192,19 @@ export default function Itinerary() {
     setActiveSpotId(event.active.id as string)
   }
 
+  const handleDragOver = (event: DragOverEvent) => {
+    const { over } = event
+    if (over && over.id.toString().startsWith('day-')) {
+      setOverDay(parseInt(over.id.toString().replace('day-', '')))
+    } else {
+      setOverDay(null)
+    }
+  }
+
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveSpotId(null)
+    setOverDay(null)
+
     const { active, over } = event
     if (!over) return
 
@@ -87,21 +212,49 @@ export default function Itinerary() {
     const overId = over.id as string
 
     let fromDay = 0
-    let toDay = 0
-    let toIndex = 0
+    let fromIndex = -1
 
     for (const route of itinerary.routes) {
-      const fromIdx = route.spots.findIndex((s) => s.id === spotId)
-      if (fromIdx !== -1) fromDay = route.day
+      const idx = route.spots.findIndex((s) => s.id === spotId)
+      if (idx !== -1) {
+        fromDay = route.day
+        fromIndex = idx
+        break
+      }
+    }
 
-      const toIdx = route.spots.findIndex((s) => s.id === overId)
-      if (toIdx !== -1) {
+    if (!fromDay || fromIndex === -1) return
+
+    if (overId.toString().startsWith('day-')) {
+      const toDay = parseInt(overId.toString().replace('day-', ''))
+      if (toDay !== fromDay) {
+        const toRoute = itinerary.routes.find((r) => r.day === toDay)
+        if (toRoute) {
+          const hotelIndex = toRoute.spots.findIndex((s) => s.type === 'hotel')
+          const toIndex = hotelIndex > 0 ? hotelIndex : toRoute.spots.length
+          moveSpot(spotId, fromDay, toDay, toIndex)
+          setExpandedDay(toDay)
+        }
+      }
+      return
+    }
+
+    let toDay = 0
+    let toIndex = -1
+
+    for (const route of itinerary.routes) {
+      const idx = route.spots.findIndex((s) => s.id === overId)
+      if (idx !== -1) {
         toDay = route.day
-        toIndex = toIdx
+        toIndex = idx
+        break
       }
     }
 
     if (fromDay && toDay) {
+      if (fromDay !== toDay) {
+        setExpandedDay(toDay)
+      }
       moveSpot(spotId, fromDay, toDay, toIndex)
     }
   }
@@ -119,6 +272,14 @@ export default function Itinerary() {
     setExpandedDay(expandedDay === day ? null : day)
   }
 
+  const renderSortableSpots = (spots: Spot[]) => (
+    <div className="space-y-2">
+      {spots.map((spot) => (
+        <SpotCard key={spot.id} spot={spot} />
+      ))}
+    </div>
+  )
+
   return (
     <div className="min-h-screen bg-sand-50">
       <div className="px-4 pt-6 pb-4">
@@ -132,84 +293,44 @@ export default function Itinerary() {
         </div>
       )}
 
-      <div className="px-4 space-y-3 pb-4">
-        {itinerary.routes.map((route) => {
-          const isExpanded = expandedDay === route.day
-          return (
-            <motion.div
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pointerWithin}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="px-4 space-y-3 pb-4">
+          {itinerary.routes.map((route) => (
+            <DayContainer
               key={route.day}
-              layout
-              className="bg-white rounded-2xl border border-sand-100 overflow-hidden shadow-sm"
-            >
-              <button
-                onClick={() => toggleDay(route.day)}
-                className="w-full flex items-center gap-3 px-4 py-3"
-              >
-                <span className="bg-forest-500 text-white text-xs font-medium px-2 py-0.5 rounded-full">
-                  D{route.day}
+              day={route.day}
+              date={route.date}
+              totalMileage={route.totalMileage}
+              drivingDuration={route.drivingDuration}
+              spots={route.spots}
+              isExpanded={expandedDay === route.day}
+              isOver={overDay === route.day}
+              onToggle={() => toggleDay(route.day)}
+              activeSpotId={activeSpotId}
+              renderSortable={renderSortableSpots}
+            />
+          ))}
+        </div>
+
+        <DragOverlay>
+          {activeSpotId && activeSpot ? (
+            <div className="bg-white rounded-xl p-3 shadow-2xl border border-forest-300 opacity-95 min-w-[260px]">
+              <div className="flex items-center gap-2">
+                <GripVertical size={14} className="text-sand-300" />
+                <span className="text-sm font-medium text-sand-700">
+                  {activeSpot.name}
                 </span>
-                <div className="flex-1 text-left">
-                  <div className="text-sm font-medium text-sand-700">{route.date}</div>
-                  <div className="text-xs text-sand-400">
-                    {route.totalMileage}km · {route.drivingDuration}h驾驶
-                  </div>
-                </div>
-                {isExpanded ? (
-                  <ChevronDown size={16} className="text-sand-400" />
-                ) : (
-                  <ChevronRight size={16} className="text-sand-400" />
-                )}
-              </button>
-
-              <AnimatePresence>
-                {isExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="px-4 pb-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <ArrowRight size={12} className="text-sand-300" />
-                        <span className="text-xs text-sand-400">行程路线</span>
-                      </div>
-
-                      <DndContext
-                        sensors={sensors}
-                        collisionDetection={closestCenter}
-                        onDragStart={handleDragStart}
-                        onDragEnd={handleDragEnd}
-                      >
-                        <SortableContext
-                          items={route.spots.map((s) => s.id)}
-                          strategy={verticalListSortingStrategy}
-                        >
-                          <div className="space-y-2">
-                            {route.spots.map((spot) => (
-                              <SpotCard key={spot.id} spot={spot} />
-                            ))}
-                          </div>
-                        </SortableContext>
-                        <DragOverlay>
-                          {activeSpotId ? (
-                            <div className="bg-white rounded-xl p-2.5 shadow-xl border border-forest-300 opacity-90">
-                              <span className="text-sm text-sand-700">
-                                {route.spots.find((s) => s.id === activeSpotId)?.name}
-                              </span>
-                            </div>
-                          ) : null}
-                        </DragOverlay>
-                      </DndContext>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          )
-        })}
-      </div>
+              </div>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       <div className="fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-md px-4 z-40">
         <AnimatePresence>
@@ -269,8 +390,4 @@ export default function Itinerary() {
       </div>
     </div>
   )
-}
-
-function useNavigateStore() {
-  return useNavigate()
 }

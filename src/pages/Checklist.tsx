@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -23,12 +23,18 @@ export default function Checklist() {
   const [newItemName, setNewItemName] = useState('')
   const [showExport, setShowExport] = useState(false)
   const [copied, setCopied] = useState(false)
+  const lastItineraryIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (itinerary && checklist.length === 0) {
+    if (!itinerary) return
+
+    const currentItineraryId = `${itinerary.params.departure}-${itinerary.params.days}-${itinerary.params.vehicleType}-${itinerary.params.dailyDriveHours}-${itinerary.params.preferences.join(',')}`
+
+    if (lastItineraryIdRef.current !== currentItineraryId) {
+      lastItineraryIdRef.current = currentItineraryId
       buildChecklist()
     }
-  }, [itinerary, checklist.length, buildChecklist])
+  }, [itinerary, buildChecklist])
 
   useEffect(() => {
     const cats = new Set(Object.keys(groupedByCategory))

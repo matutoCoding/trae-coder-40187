@@ -1,21 +1,34 @@
 import type { TripParams, DayRoute, Spot, ItineraryData } from '@/types'
 
-const SCENIC_SPOTS: Record<string, { name: string; description: string; duration: number }[]> = {
-  default: [
-    { name: '朝阳观景台', description: '日出最佳观赏点，视野开阔', duration: 1.5 },
-    { name: '碧水湾', description: '清澈湖水，适合拍照休闲', duration: 2 },
-    { name: '古镇老街', description: '百年老街，体验当地民俗', duration: 2.5 },
-    { name: '森林步道', description: '天然氧吧，亲子徒步', duration: 1.5 },
-    { name: '云端栈道', description: '悬崖栈道，壮丽山景', duration: 2 },
-    { name: '田园风光带', description: '金色稻田，田园牧歌', duration: 1 },
-    { name: '湿地保护区', description: '候鸟栖息地，生态观赏', duration: 1.5 },
-    { name: '温泉度假村', description: '天然温泉，放松身心', duration: 3 },
-    { name: '民俗文化村', description: '非遗展示，手工体验', duration: 2 },
-    { name: '峡谷漂流', description: '夏日消暑，刺激好玩', duration: 2.5 },
-    { name: '高山草甸', description: '广袤草原，星空露营', duration: 2 },
-    { name: '石窟艺术群', description: '千年石窟，文化瑰宝', duration: 1.5 },
-  ],
-}
+const MOUNTAIN_KEYWORDS = ['峡谷', '栈道', '高山', '山顶', '悬崖', '云端', '海拔', '山峰', '山谷', '陡峭', '盘山']
+
+const SCENIC_SPOTS_DEFAULT = [
+  { name: '朝阳观景台', description: '日出最佳观赏点，视野开阔', duration: 1.5 },
+  { name: '碧水湾', description: '清澈湖水，适合拍照休闲', duration: 2 },
+  { name: '古镇老街', description: '百年老街，体验当地民俗', duration: 2.5 },
+  { name: '森林步道', description: '天然氧吧，亲子徒步', duration: 1.5 },
+  { name: '云端栈道', description: '悬崖栈道，壮丽山景', duration: 2 },
+  { name: '田园风光带', description: '金色稻田，田园牧歌', duration: 1 },
+  { name: '湿地保护区', description: '候鸟栖息地，生态观赏', duration: 1.5 },
+  { name: '温泉度假村', description: '天然温泉，放松身心', duration: 3 },
+  { name: '民俗文化村', description: '非遗展示，手工体验', duration: 2 },
+  { name: '峡谷漂流', description: '夏日消暑，刺激好玩', duration: 2.5 },
+  { name: '高山草甸', description: '广袤草原，星空露营', duration: 2 },
+  { name: '石窟艺术群', description: '千年石窟，文化瑰宝', duration: 1.5 },
+]
+
+const PLAIN_SPOTS = [
+  { name: '万亩花海', description: '四季花开，拍照圣地', duration: 1.5 },
+  { name: '滨湖湿地公园', description: '湖水清澈，栈道平缓', duration: 2 },
+  { name: '农耕文化园', description: '体验传统农耕，亲子互动', duration: 2 },
+  { name: '葡萄采摘园', description: '新鲜采摘，品尝美酒', duration: 1.5 },
+  { name: '湖滨步道', description: '沿湖漫步，景色宜人', duration: 1.5 },
+  { name: '古村落建筑群', description: '保存完好的明清古村', duration: 2 },
+  { name: '平原森林', description: '高大乔木，清凉避暑', duration: 1.5 },
+  { name: '农业科技馆', description: '现代农业展示，科普教育', duration: 2 },
+  { name: '滨江公园', description: '江景开阔，适合骑行', duration: 1.5 },
+  { name: '蝴蝶生态园', description: '观蝶赏花，自然教育', duration: 2 },
+]
 
 const FAMILY_SPOTS = [
   { name: '亲子农庄', description: '采摘喂养，亲子互动', duration: 2.5 },
@@ -26,40 +39,63 @@ const FAMILY_SPOTS = [
 
 const CAMPING_SPOTS = [
   { name: '湖畔营地', description: '临湖扎营，星空入眠', duration: 10 },
-  { name: '山顶露营区', description: '海拔1200m，看云海日出', duration: 10 },
+  { name: '草原露营区', description: '广阔草原，看日出日落', duration: 10 },
   { name: '森林营地', description: '松林掩映，虫鸣伴眠', duration: 10 },
 ]
 
-const SERVICE_AREAS = ['清河服务区', '阳光服务区', '望山服务区', '绿洲服务区', '星河服务区', '云海服务区']
+const MOUNTAIN_SERVICE_AREAS = ['望山服务区', '云海服务区', '天路服务区', '盘山服务区']
+const PLAIN_SERVICE_AREAS = ['清河服务区', '阳光服务区', '绿洲服务区', '麦田服务区', '荷风服务区', '稻香服务区']
+
+function isMountainSpot(spot: { name: string; description: string }): boolean {
+  return MOUNTAIN_KEYWORDS.some(
+    (k) => spot.name.includes(k) || spot.description.includes(k)
+  )
+}
 
 function pickRandom<T>(arr: T[], count: number): T[] {
   const shuffled = [...arr].sort(() => Math.random() - 0.5)
   return shuffled.slice(0, count)
 }
 
-function getBaseSpots(params: TripParams): typeof SCENIC_SPOTS.default {
-  const base = [...SCENIC_SPOTS.default]
+function getBaseSpots(params: TripParams) {
+  const lessMountain = params.preferences.includes('less_mountain')
+
+  let base = [...SCENIC_SPOTS_DEFAULT]
+
+  if (lessMountain) {
+    base = base.filter((s) => !isMountainSpot(s))
+    base = [...base, ...PLAIN_SPOTS]
+  }
+
   if (params.preferences.includes('family')) {
     base.push(...FAMILY_SPOTS)
   }
   if (params.preferences.includes('camping')) {
     base.push(...CAMPING_SPOTS)
   }
+
   return base
+}
+
+function getServiceAreas(params: TripParams) {
+  if (params.preferences.includes('less_mountain')) {
+    return PLAIN_SERVICE_AREAS
+  }
+  return [...PLAIN_SERVICE_AREAS, ...MOUNTAIN_SERVICE_AREAS]
 }
 
 function generateDayRoute(
   params: TripParams,
   day: number,
   startDate: Date,
-  allSpots: typeof SCENIC_SPOTS.default,
+  allSpots: ReturnType<typeof getBaseSpots>,
   usedSpotNames: Set<string>
 ): DayRoute {
   const date = new Date(startDate)
   date.setDate(date.getDate() + day - 1)
   const dateStr = `${date.getMonth() + 1}月${date.getDate()}日`
 
-  const avgSpeed = 60
+  const avgSpeed = params.preferences.includes('less_mountain') ? 70 : 60
   const maxDriveKm = params.dailyDriveHours * avgSpeed
 
   const availableSpots = allSpots.filter((s) => !usedSpotNames.has(s.name))
@@ -74,6 +110,7 @@ function generateDayRoute(
   let currentHour = 8
   const spots: Spot[] = []
   const serviceAreas: string[] = []
+  const availableServiceAreas = getServiceAreas(params)
   let totalDriveHours = 0
 
   selectedSpots.forEach((spotData, idx) => {
@@ -89,12 +126,12 @@ function generateDayRoute(
     currentHour += driveHours
 
     if (totalDriveHours > 2 && !serviceAreas.length) {
-      serviceAreas.push(pickRandom(SERVICE_AREAS, 1)[0])
+      serviceAreas.push(pickRandom(availableServiceAreas, 1)[0])
       currentHour += 0.3
     }
 
     if (totalDriveHours > 4 && serviceAreas.length < 2) {
-      serviceAreas.push(pickRandom(SERVICE_AREAS, 1)[0])
+      serviceAreas.push(pickRandom(availableServiceAreas, 1)[0])
       currentHour += 0.3
     }
 
@@ -153,7 +190,7 @@ function generateDayRoute(
   })
 
   if (serviceAreas.length === 0) {
-    serviceAreas.push(pickRandom(SERVICE_AREAS, 1)[0])
+    serviceAreas.push(pickRandom(availableServiceAreas, 1)[0])
   }
 
   let fuelChargeSuggestion = ''
@@ -194,6 +231,7 @@ export function generateRoute(params: TripParams): ItineraryData {
   const usedSpotNames = new Set<string>()
   const startDate = new Date()
   startDate.setDate(startDate.getDate() + 3)
+  const lessMountain = params.preferences.includes('less_mountain')
 
   const routes: DayRoute[] = []
   for (let day = 1; day <= params.days; day++) {
@@ -201,6 +239,11 @@ export function generateRoute(params: TripParams): ItineraryData {
   }
 
   const warnings: string[] = []
+
+  if (lessMountain) {
+    warnings.push('✓ 少走山路偏好已生效，已避开峡谷、栈道、高山等山路景点，路线以平原、湖区为主')
+  }
+
   routes.forEach((route) => {
     if (route.drivingDuration > params.dailyDriveHours) {
       warnings.push(`第${route.day}天驾驶时长${route.drivingDuration}小时，超出每日${params.dailyDriveHours}小时限制`)
@@ -216,6 +259,10 @@ export function generateRoute(params: TripParams): ItineraryData {
     if (longDay) {
       warnings.push(`电动车出行，第${longDay.day}天里程较长(${longDay.totalMileage}km)，请提前规划充电站`)
     }
+  }
+
+  if (params.preferences.includes('camping')) {
+    warnings.push('露营偏好已生效，路线包含露营地，请准备相关装备')
   }
 
   return {
