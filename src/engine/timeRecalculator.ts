@@ -1,5 +1,6 @@
 import type { ItineraryData, DayRoute, TimeSegment } from '@/types'
 import { PLAN_STYLES } from '@/types'
+import { calculateCost, getDayCompare, getHardestDay, getTargetAudience } from '@/engine/costEstimator'
 
 function getPlanAvgSpeed(style: string) {
   switch (style) {
@@ -35,13 +36,25 @@ export function recalculateTime(itinerary: ItineraryData): ItineraryData {
   const warnings: string[] = []
 
   if (itinerary.params.preferences.includes('less_mountain')) {
-    const plainSpots = itinerary.alternativeSpots?.filter((n: string) =>
-      ['湿地', '湖', '滨', '平原', '花', '园', '农田', '村', '森林', '江', '河', '荷'].some((k) => n.includes(k))
-    ) || []
-    const plainExamples = plainSpots.slice(0, 4).join('、')
-    warnings.push(`✓ 少走山路偏好已生效，已避开峡谷、栈道、高山等山路景点，路线以平原、湖区、湿地为主`)
-    if (plainExamples) {
-      warnings.push(`  本次选用的平原/湖区景点：${plainExamples} 等`)
+    const usedNames = itinerary.alternativeSpots || []
+    const lakeSpots = usedNames.filter((n: string) => n.includes('湖') || n.includes('滨') || n.includes('江'))
+    const wetlandSpots = usedNames.filter((n: string) => n.includes('湿地'))
+    const plainSpots = usedNames.filter((n: string) =>
+      ['平原', '花', '园', '农田', '村', '森林', '荷', '采摘', '耕'].some((k) => n.includes(k))
+    )
+    const lakeExamples = lakeSpots.slice(0, 2).join('、')
+    const wetlandExamples = wetlandSpots.slice(0, 2).join('、')
+    const plainExamples = plainSpots.slice(0, 2).join('、')
+
+    const parts: string[] = []
+    if (lakeExamples) parts.push(`湖区${lakeExamples}`)
+    if (wetlandExamples) parts.push(`湿地${wetlandExamples}`)
+    if (plainExamples) parts.push(`田园${plainExamples}`)
+
+    if (parts.length > 0) {
+      warnings.push(`🌿 少走山路已安排，路线避开盘山路段，改用${parts.join('、')}这类平缓点位`)
+    } else {
+      warnings.push(`🌿 少走山路已安排，全部选用平原、湖区、湿地类平缓景点`)
     }
   }
 
@@ -127,9 +140,23 @@ export function recalculateTime(itinerary: ItineraryData): ItineraryData {
     warnings.push('👶 亲子偏好已生效，景点中包含亲子农庄、儿童乐园等适合家庭的内容')
   }
 
-  return {
+  const dayCompare = getDayCompare(routes)
+  const hardestDay = getHardestDay(dayCompare)
+  const targetAudience = getTargetAudience(itinerary.style, itinerary.params.days, itinerary.params.preferences)
+
+  const partialUpdated = {
     ...itinerary,
     routes,
     warnings,
+    dayCompare,
+    hardestDay,
+    targetAudience,
+  }
+
+  const costEstimate = calculateCost(partialUpdated)
+
+  return {
+    ...partialUpdated,
+    costEstimate,
   }
 }

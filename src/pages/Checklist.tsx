@@ -11,6 +11,8 @@ import {
   ChevronUp,
   X,
   Trash2,
+  Calendar,
+  Backpack,
 } from 'lucide-react'
 import { useTripStore } from '@/store/tripStore'
 import { CHECKLIST_GROUPS, PLAN_STYLES } from '@/types'
@@ -27,6 +29,25 @@ const GROUP_OPTIONS = [
   { value: 'other', label: '其他物品' },
 ]
 
+function groupItems(items: ChecklistItem[]) {
+  const grouped: Record<string, { groupLabel: string; icon: string; categories: Record<string, ChecklistItem[]> }> = {}
+  items.forEach((item) => {
+    const groupInfo = CHECKLIST_GROUPS[item.group] || { label: item.group, icon: '📦', order: 99 }
+    if (!grouped[item.group]) {
+      grouped[item.group] = {
+        groupLabel: groupInfo.label,
+        icon: groupInfo.icon,
+        categories: {},
+      }
+    }
+    if (!grouped[item.group].categories[item.category]) {
+      grouped[item.group].categories[item.category] = []
+    }
+    grouped[item.group].categories[item.category].push(item)
+  })
+  return grouped
+}
+
 export default function Checklist() {
   const navigate = useNavigate()
   const {
@@ -40,10 +61,12 @@ export default function Checklist() {
   const itinerary = getSelectedItinerary()
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['documents', 'vehicle']))
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['daily', 'general']))
   const [showAddForm, setShowAddForm] = useState(false)
   const [newItemGroup, setNewItemGroup] = useState<string>('other')
   const [newItemCategory, setNewItemCategory] = useState('')
   const [newItemName, setNewItemName] = useState('')
+  const [newItemIsDaily, setNewItemIsDaily] = useState(false)
   const [showExport, setShowExport] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -51,24 +74,24 @@ export default function Checklist() {
   const totalCount = checklist.length
   const progress = totalCount > 0 ? Math.round((checkedCount / totalCount) * 100) : 0
 
-  const groupedByGroup = useMemo(() => {
-    const grouped: Record<string, { groupLabel: string; icon: string; categories: Record<string, ChecklistItem[]> }> = {}
-    checklist.forEach((item) => {
-      const groupInfo = CHECKLIST_GROUPS[item.group] || { label: item.group, icon: '📦', order: 99 }
-      if (!grouped[item.group]) {
-        grouped[item.group] = {
-          groupLabel: groupInfo.label,
-          icon: groupInfo.icon,
-          categories: {},
-        }
-      }
-      if (!grouped[item.group].categories[item.category]) {
-        grouped[item.group].categories[item.category] = []
-      }
-      grouped[item.group].categories[item.category].push(item)
-    })
-    return grouped
+  const { dailyItems, generalItems } = useMemo(() => {
+    return {
+      dailyItems: checklist.filter((i) => i.isDaily),
+      generalItems: checklist.filter((i) => !i.isDaily),
+    }
   }, [checklist])
+
+  const dailyGrouped = useMemo(() => groupItems(dailyItems), [dailyItems])
+  const generalGrouped = useMemo(() => groupItems(generalItems), [generalItems])
+
+  const toggleSection = (section: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(section)) next.delete(section)
+      else next.add(section)
+      return next
+    })
+  }
 
   const toggleGroup = (group: string) => {
     setExpandedGroups((prev) => {
@@ -84,10 +107,12 @@ export default function Checklist() {
       addChecklistItem(
         newItemGroup as ChecklistItem['group'],
         newItemCategory.trim() || CHECKLIST_GROUPS[newItemGroup]?.label || '自定义',
-        newItemName.trim()
+        newItemName.trim(),
+        newItemIsDaily
       )
       setNewItemName('')
       setNewItemCategory('')
+      setNewItemIsDaily(false)
       setShowAddForm(false)
     }
   }
@@ -177,106 +202,148 @@ export default function Checklist() {
       </div>
 
       <div className="px-4 space-y-3 pb-4">
-        {Object.entries(groupedByGroup)
-          .sort((a, b) => {
-            const orderA = CHECKLIST_GROUPS[a[0]]?.order || 99
-            const orderB = CHECKLIST_GROUPS[b[0]]?.order || 99
-            return orderA - orderB
-          })
-          .map(([group, data]) => {
-            const isExpanded = expandedGroups.has(group)
-            const catChecked = Object.values(data.categories)
-              .flat()
-              .filter((i) => i.checked).length
-            const catTotal = Object.values(data.categories).flat().length
-
-            return (
-              <div
-                key={group}
-                className="bg-white rounded-2xl border border-sand-100 overflow-hidden shadow-sm"
+        {[
+          { key: 'daily', title: '按天准备', subtitle: '每天都要检查/携带', icon: <Calendar size={16} />, data: dailyGrouped, items: dailyItems, color: 'bg-forest-50 text-forest-600' },
+          { key: 'general', title: '通用物品', subtitle: '出行前一次备齐', icon: <Backpack size={16} />, data: generalGrouped, items: generalItems, color: 'bg-sand-50 text-sand-600' },
+        ].map((section) => {
+          if (section.items.length === 0) return null
+          const isSectionExpanded = expandedSections.has(section.key)
+          const secChecked = section.items.filter((i) => i.checked).length
+          return (
+            <div key={section.key} className="space-y-2">
+              <button
+                onClick={() => toggleSection(section.key)}
+                className="w-full flex items-center gap-2 px-1"
               >
-                <button
-                  onClick={() => toggleGroup(group)}
-                  className="w-full flex items-center gap-3 px-4 py-3"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-sand-50 flex items-center justify-center text-base">
-                    {data.icon}
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="text-sm font-medium text-sand-700">{data.groupLabel}</div>
-                    <div className="text-xs text-sand-400">{catChecked}/{catTotal} 项</div>
-                  </div>
-                  {isExpanded ? (
-                    <ChevronUp size={16} className="text-sand-400" />
-                  ) : (
-                    <ChevronDown size={16} className="text-sand-400" />
-                  )}
-                </button>
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${section.color}`}>
+                  {section.icon}
+                </div>
+                <div className="flex-1 text-left">
+                  <div className="text-sm font-semibold text-sand-800">{section.title}</div>
+                  <div className="text-xs text-sand-400">{section.subtitle} · {secChecked}/{section.items.length}</div>
+                </div>
+                {isSectionExpanded ? (
+                  <ChevronUp size={16} className="text-sand-400" />
+                ) : (
+                  <ChevronDown size={16} className="text-sand-400" />
+                )}
+              </button>
 
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="px-4 pb-3 space-y-2">
-                        {Object.entries(data.categories).map(([category, items]) => {
-                          const hasMultipleCategories = Object.keys(data.categories).length > 1
-                          return (
-                            <div key={category} className="space-y-1">
-                              {hasMultipleCategories && (
-                                <div className="text-xs text-sand-400 font-medium mt-2 first:mt-0">
-                                  · {category}
-                                </div>
+              <AnimatePresence>
+                {isSectionExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden space-y-2"
+                  >
+                    {Object.entries(section.data)
+                      .sort((a, b) => {
+                        const orderA = CHECKLIST_GROUPS[a[0]]?.order || 99
+                        const orderB = CHECKLIST_GROUPS[b[0]]?.order || 99
+                        return orderA - orderB
+                      })
+                      .map(([group, data]) => {
+                        const isExpanded = expandedGroups.has(`${section.key}-${group}`)
+                        const catChecked = Object.values(data.categories)
+                          .flat()
+                          .filter((i) => i.checked).length
+                        const catTotal = Object.values(data.categories).flat().length
+
+                        return (
+                          <div
+                            key={group}
+                            className="bg-white rounded-2xl border border-sand-100 overflow-hidden shadow-sm"
+                          >
+                            <button
+                              onClick={() => toggleGroup(`${section.key}-${group}`)}
+                              className="w-full flex items-center gap-3 px-4 py-2.5"
+                            >
+                              <div className="w-7 h-7 rounded-lg bg-sand-50 flex items-center justify-center text-sm">
+                                {data.icon}
+                              </div>
+                              <div className="flex-1 text-left">
+                                <div className="text-sm font-medium text-sand-700">{data.groupLabel}</div>
+                                <div className="text-xs text-sand-400">{catChecked}/{catTotal} 项</div>
+                              </div>
+                              {isExpanded ? (
+                                <ChevronUp size={14} className="text-sand-400" />
+                              ) : (
+                                <ChevronDown size={14} className="text-sand-400" />
                               )}
-                              {items.map((item) => (
-                                <div
-                                  key={item.id}
-                                  className="flex items-center gap-2.5 group py-1 pl-2"
-                                  style={{ paddingLeft: hasMultipleCategories ? '1rem' : '0.5rem' }}
+                            </button>
+
+                            <AnimatePresence>
+                              {isExpanded && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.15 }}
+                                  className="overflow-hidden"
                                 >
-                                  <button
-                                    onClick={() => toggleChecklistItem(item.id)}
-                                    className="flex-shrink-0"
-                                  >
-                                    {item.checked ? (
-                                      <CheckSquare size={18} className="text-forest-500" />
-                                    ) : (
-                                      <Square size={18} className="text-sand-300 hover:text-sand-400" />
-                                    )}
-                                  </button>
-                                  <span
-                                    className={`text-sm flex-1 transition-all ${
-                                      item.checked
-                                        ? 'line-through text-sand-300'
-                                        : 'text-sand-700'
-                                    }`}
-                                  >
-                                    {item.name}
-                                  </span>
-                                  {!item.autoGenerated && (
-                                    <button
-                                      onClick={() => removeChecklistItem(item.id)}
-                                      className="opacity-0 group-hover:opacity-100 transition-opacity text-sand-300 hover:text-sunset-400"
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            )
-          })}
+                                  <div className="px-4 pb-2.5 space-y-1.5">
+                                    {Object.entries(data.categories).map(([category, items]) => {
+                                      const hasMultipleCategories = Object.keys(data.categories).length > 1
+                                      return (
+                                        <div key={category} className="space-y-0.5">
+                                          {hasMultipleCategories && (
+                                            <div className="text-[11px] text-sand-400 font-medium mt-1.5 first:mt-0 pl-1">
+                                              · {category}
+                                            </div>
+                                          )}
+                                          {items.map((item) => (
+                                            <div
+                                              key={item.id}
+                                              className="flex items-center gap-2.5 group py-0.5 pl-2"
+                                              style={{ paddingLeft: hasMultipleCategories ? '0.875rem' : '0.375rem' }}
+                                            >
+                                              <button
+                                                onClick={() => toggleChecklistItem(item.id)}
+                                                className="flex-shrink-0"
+                                              >
+                                                {item.checked ? (
+                                                  <CheckSquare size={16} className="text-forest-500" />
+                                                ) : (
+                                                  <Square size={16} className="text-sand-300 hover:text-sand-400" />
+                                                )}
+                                              </button>
+                                              <span
+                                                className={`text-sm flex-1 transition-all ${
+                                                  item.checked
+                                                    ? 'line-through text-sand-300'
+                                                    : 'text-sand-700'
+                                                }`}
+                                              >
+                                                {item.name}
+                                              </span>
+                                              {!item.autoGenerated && (
+                                                <button
+                                                  onClick={() => removeChecklistItem(item.id)}
+                                                  className="opacity-0 group-hover:opacity-100 transition-opacity text-sand-300 hover:text-sunset-400"
+                                                >
+                                                  <Trash2 size={13} />
+                                                </button>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        )
+                      })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )
+        })}
       </div>
 
       <div className="fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-md px-4 z-40 space-y-2">
@@ -320,6 +387,15 @@ export default function Checklist() {
                 className="w-full px-3 py-2 bg-sand-50 border border-sand-100 rounded-xl text-sm focus:outline-none focus:border-forest-400"
                 onKeyDown={(e) => e.key === 'Enter' && handleAddItem()}
               />
+              <label className="flex items-center gap-2 px-1">
+                <input
+                  type="checkbox"
+                  checked={newItemIsDaily}
+                  onChange={(e) => setNewItemIsDaily(e.target.checked)}
+                  className="w-4 h-4 accent-forest-500"
+                />
+                <span className="text-xs text-sand-600">这是每天都要准备的物品</span>
+              </label>
               <button
                 onClick={handleAddItem}
                 disabled={!newItemName.trim()}

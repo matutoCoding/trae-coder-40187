@@ -1,5 +1,6 @@
 import type { TripParams, DayRoute, Spot, ItineraryData, PlanStyle, TimeSegment } from '@/types'
 import { PLAN_STYLES } from '@/types'
+import { calculateCost, getDayCompare, getHardestDay, getTargetAudience } from '@/engine/costEstimator'
 
 const MOUNTAIN_KEYWORDS = ['峡谷', '栈道', '高山', '山顶', '悬崖', '云端', '海拔', '山峰', '山谷', '陡峭', '盘山', '天路', '险峻', '攀登']
 
@@ -284,13 +285,24 @@ export function generateRoute(params: TripParams, style: PlanStyle): ItineraryDa
   const config = getPlanConfig(style)
 
   if (lessMountain) {
+    const lakeSpots = usedNamesList.filter((n) => n.includes('湖') || n.includes('滨') || n.includes('江'))
+    const wetlandSpots = usedNamesList.filter((n) => n.includes('湿地'))
     const plainSpots = usedNamesList.filter((n) =>
-      ['湿地', '湖', '滨', '平原', '花', '园', '农田', '村', '森林', '江', '河', '荷'].some((k) => n.includes(k))
+      ['平原', '花', '园', '农田', '村', '森林', '荷', '采摘', '耕'].some((k) => n.includes(k))
     )
-    const plainExamples = plainSpots.slice(0, 4).join('、')
-    warnings.push(`✓ 少走山路偏好已生效，已避开峡谷、栈道、高山等山路景点，路线以平原、湖区、湿地为主`)
-    if (plainExamples) {
-      warnings.push(`  本次选用的平原/湖区景点：${plainExamples} 等`)
+    const lakeExamples = lakeSpots.slice(0, 2).join('、')
+    const wetlandExamples = wetlandSpots.slice(0, 2).join('、')
+    const plainExamples = plainSpots.slice(0, 2).join('、')
+
+    const parts: string[] = []
+    if (lakeExamples) parts.push(`湖区${lakeExamples}`)
+    if (wetlandExamples) parts.push(`湿地${wetlandExamples}`)
+    if (plainExamples) parts.push(`田园${plainExamples}`)
+
+    if (parts.length > 0) {
+      warnings.push(`🌿 少走山路已安排，路线避开盘山路段，改用${parts.join('、')}这类平缓点位`)
+    } else {
+      warnings.push(`🌿 少走山路已安排，全部选用平原、湖区、湿地类平缓景点`)
     }
   }
 
@@ -321,7 +333,11 @@ export function generateRoute(params: TripParams, style: PlanStyle): ItineraryDa
     warnings.push('👶 亲子偏好已生效，景点中包含亲子农庄、儿童乐园等适合家庭的内容')
   }
 
-  return {
+  const dayCompare = getDayCompare(routes)
+  const hardestDay = getHardestDay(dayCompare)
+  const targetAudience = getTargetAudience(style, params.days, params.preferences)
+
+  const partialItinerary = {
     id: `${style}-${Date.now()}`,
     style,
     styleName: styleInfo.name,
@@ -330,6 +346,16 @@ export function generateRoute(params: TripParams, style: PlanStyle): ItineraryDa
     routes,
     warnings,
     alternativeSpots: usedNamesList,
+    dayCompare,
+    hardestDay,
+    targetAudience,
+  }
+
+  const costEstimate = calculateCost(partialItinerary as ItineraryData)
+
+  return {
+    ...partialItinerary,
+    costEstimate,
   }
 }
 

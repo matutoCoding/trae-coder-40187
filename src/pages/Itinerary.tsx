@@ -17,7 +17,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Car, Hotel, UtensilsCrossed, ChevronDown, ChevronRight, ArrowRight, GripVertical, MapPin, Clock } from 'lucide-react'
+import { Car, Hotel, UtensilsCrossed, ChevronDown, ChevronRight, ArrowRight, GripVertical, MapPin, Clock, DollarSign, Fuel, Zap, CircleParking } from 'lucide-react'
 import { useTripStore } from '@/store/tripStore'
 import SpotCard from '@/components/SpotCard'
 import WarningBanner from '@/components/WarningBanner'
@@ -236,6 +236,7 @@ export default function Itinerary() {
   const [optimizingType, setOptimizingType] = useState<OptimizationType | null>(null)
   const [overDay, setOverDay] = useState<number | null>(null)
   const [showTimeline, setShowTimeline] = useState(true)
+  const [showCostEstimate, setShowCostEstimate] = useState(true)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -398,6 +399,110 @@ export default function Itinerary() {
       {itinerary.warnings.length > 0 && (
         <div className="px-4 mb-3">
           <WarningBanner warnings={itinerary.warnings} />
+        </div>
+      )}
+
+      {itinerary.costEstimate && (
+        <div className="px-4 mb-3">
+          <motion.div
+            layout
+            className="bg-white rounded-2xl border border-sand-100 overflow-hidden shadow-sm"
+          >
+            <button
+              onClick={() => setShowCostEstimate(!showCostEstimate)}
+              className="w-full flex items-center justify-between px-4 py-3"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-sunset-50 flex items-center justify-center">
+                  <DollarSign size={16} className="text-sunset-500" />
+                </div>
+                <div className="text-left">
+                  <div className="text-sm font-medium text-sand-700">费用与补能预估</div>
+                  <div className="text-xs text-sand-400">
+                    总计约 {itinerary.costEstimate.totalCostRange}
+                  </div>
+                </div>
+              </div>
+              {showCostEstimate ? (
+                <ChevronDown size={16} className="text-sand-400" />
+              ) : (
+                <ChevronRight size={16} className="text-sand-400" />
+              )}
+            </button>
+
+            <AnimatePresence>
+              {showCostEstimate && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-4 pb-4 space-y-2.5">
+                    <div className="grid grid-cols-2 gap-2">
+                      {itinerary.params.vehicleType !== 'electric' && (
+                        <div className="bg-sand-50 rounded-xl p-3">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <Fuel size={13} className="text-sand-500" />
+                            <span className="text-xs text-sand-500">油费</span>
+                          </div>
+                          <div className="text-sm font-semibold text-sand-700">
+                            {itinerary.costEstimate.fuelCostRange}
+                          </div>
+                        </div>
+                      )}
+                      {(itinerary.params.vehicleType === 'electric' || itinerary.params.vehicleType === 'hybrid') && (
+                        <div className="bg-sand-50 rounded-xl p-3">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <Zap size={13} className="text-forest-500" />
+                            <span className="text-xs text-sand-500">电费</span>
+                          </div>
+                          <div className="text-sm font-semibold text-sand-700">
+                            约{itinerary.costEstimate.chargeCost}元
+                            {itinerary.costEstimate.chargeStops > 0 && (
+                              <span className="text-xs text-sand-400 ml-1">
+                                · 约{itinerary.costEstimate.chargeStops}次补能
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      <div className="bg-sand-50 rounded-xl p-3">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <CircleParking size={13} className="text-sand-500" />
+                          <span className="text-xs text-sand-500">停车费</span>
+                        </div>
+                        <div className="text-sm font-semibold text-sand-700">
+                          {itinerary.costEstimate.parkingCostRange}
+                        </div>
+                      </div>
+                      <div className="bg-sand-50 rounded-xl p-3">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Hotel size={13} className="text-sand-500" />
+                          <span className="text-xs text-sand-500">住宿</span>
+                        </div>
+                        <div className="text-sm font-semibold text-sand-700">
+                          {itinerary.costEstimate.hotelCostRange}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-gradient-to-r from-sunset-50 to-sand-50 rounded-xl p-3 border border-sunset-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-sand-500">预估总费用</span>
+                        <span className="text-base font-bold text-sunset-600">
+                          {itinerary.costEstimate.totalCostRange}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-sand-400 mt-1">
+                        * 按{itinerary.params.days}天预估，实际费用因消费水平而异
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
         </div>
       )}
 

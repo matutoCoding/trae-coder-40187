@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MapPin, Calendar, Users, Car, Clock, Compass, Sparkles, Check, Gauge, Camera, Zap } from 'lucide-react'
+import { MapPin, Calendar, Users, Car, Clock, Compass, Sparkles, Check, Gauge, Camera, Zap, TrendingUp, Users2, DollarSign } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTripStore } from '@/store/tripStore'
 import { PREFERENCE_LABELS, VEHICLE_LABELS, PLAN_STYLES } from '@/types'
-import type { Preference, VehicleType, ItineraryData } from '@/types'
+import type { Preference, VehicleType, ItineraryData, DayCompareInfo } from '@/types'
 import RouteCard from '@/components/RouteCard'
 
 const DEPARTURES = ['成都', '重庆', '昆明', '西安', '兰州', '西宁', '贵阳', '大理', '丽江', '拉萨']
@@ -19,6 +19,13 @@ const STYLE_COLORS = {
   relaxed: 'from-forest-500 to-forest-600',
   scenic: 'from-sunset-400 to-sunset-500',
   efficient: 'from-sand-500 to-sand-600',
+}
+
+const INTENSITY_COLORS: Record<DayCompareInfo['intensity'], string> = {
+  '轻松': 'bg-forest-100 text-forest-700',
+  '适中': 'bg-sand-100 text-sand-700',
+  '较累': 'bg-sunset-100 text-sunset-700',
+  '很累': 'bg-sunset-200 text-sunset-800',
 }
 
 function AlternativeCard({
@@ -49,7 +56,7 @@ function AlternativeCard({
           : 'border-sand-100 bg-white hover:border-sand-200 hover:shadow-sm'
       }`}
     >
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex items-start justify-between mb-2.5">
         <div className="flex items-center gap-2">
           <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${STYLE_COLORS[plan.style]} flex items-center justify-center text-white`}>
             {STYLE_ICONS[plan.style]}
@@ -62,9 +69,16 @@ function AlternativeCard({
             <div className="text-xs text-sand-400">{plan.styleDesc}</div>
           </div>
         </div>
+        <div className="text-right">
+          <div className="text-xs text-sand-400 flex items-center gap-0.5 justify-end">
+            <DollarSign size={11} />
+            预估
+          </div>
+          <div className="text-sm font-bold text-sand-700">{plan.costEstimate?.totalCostRange || '—'}</div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 mb-2">
+      <div className="grid grid-cols-3 gap-2 mb-2.5">
         <div className="bg-sand-50 rounded-lg p-2 text-center">
           <div className="text-sm font-bold text-forest-600">{totalMileage}</div>
           <div className="text-xs text-sand-400">总里程(km)</div>
@@ -79,6 +93,20 @@ function AlternativeCard({
         </div>
       </div>
 
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <div className="flex items-center gap-1 text-xs">
+          <TrendingUp size={11} className="text-sand-400" />
+          <span className="text-sand-400">最累日：</span>
+          <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${INTENSITY_COLORS[plan.dayCompare?.[plan.hardestDay - 1]?.intensity || '适中']}`}>
+            D{plan.hardestDay} {plan.dayCompare?.[plan.hardestDay - 1]?.intensity || ''}
+          </span>
+        </div>
+        <div className="flex items-center gap-1 text-xs">
+          <Users2 size={11} className="text-sand-400" />
+          <span className="text-sand-500 truncate max-w-[140px]">{plan.targetAudience || '通用'}</span>
+        </div>
+      </div>
+
       {scenicSpots && (
         <div className="text-xs text-sand-500">
           <span className="text-sand-400">主要景点：</span>
@@ -86,6 +114,76 @@ function AlternativeCard({
         </div>
       )}
     </motion.div>
+  )
+}
+
+function PlanCompareView({ plans }: { plans: ItineraryData[] }) {
+  const maxDay = Math.max(...plans.map((p) => p.routes.length))
+  const maxHours = Math.max(...plans.flatMap((p) => p.dayCompare.map((d) => d.drivingHours)))
+
+  return (
+    <div className="bg-white rounded-2xl border border-sand-100 p-4 mb-4 shadow-sm">
+      <div className="flex items-center gap-2 mb-3">
+        <TrendingUp size={14} className="text-forest-500" />
+        <h3 className="text-sm font-display font-semibold text-sand-800">方案对比</h3>
+      </div>
+
+      <div className="space-y-3">
+        {plans.map((plan) => (
+          <div key={plan.id}>
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className={`text-xs px-1.5 py-0.5 rounded ${STYLE_COLORS[plan.style]} text-white`}>
+                  {plan.styleName}
+                </span>
+                <span className="text-xs text-sand-400">每天驾驶时长</span>
+              </div>
+              <span className="text-xs text-sand-500">
+                最累D{plan.hardestDay} {plan.dayCompare?.[plan.hardestDay - 1]?.drivingHours}h
+              </span>
+            </div>
+            <div className="flex gap-1">
+              {plan.dayCompare.map((day) => {
+                const width = Math.max(8, (day.drivingHours / Math.max(maxHours, 1)) * 100)
+                return (
+                  <div key={day.day} className="flex-1 flex flex-col items-center gap-0.5">
+                    <div className="w-full h-6 bg-sand-50 rounded overflow-hidden flex items-end">
+                      <motion.div
+                        initial={{ height: 0 }}
+                        animate={{ height: `${width}%` }}
+                        transition={{ duration: 0.4, delay: day.day * 0.05 }}
+                        className={`w-full rounded-t ${STYLE_COLORS[plan.style]} opacity-80`}
+                      />
+                    </div>
+                    <span className="text-[10px] text-sand-400">D{day.day}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="flex gap-1 mt-0.5">
+              {plan.dayCompare.map((day) => (
+                <div key={day.day} className="flex-1 text-center">
+                  <span className={`text-[9px] px-1 py-0.5 rounded ${INTENSITY_COLORS[day.intensity]}`}>
+                    {day.intensity}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 pt-3 border-t border-sand-100 grid grid-cols-3 gap-2 text-center">
+        {plans.map((plan) => (
+          <div key={plan.id}>
+            <div className="text-xs text-sand-400 mb-0.5">{plan.styleName}</div>
+            <div className="text-xs text-sand-600 leading-snug">
+              {plan.targetAudience || '通用'}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -341,6 +439,8 @@ export default function Generate() {
                 />
               ))}
             </div>
+
+            {alternatives.length > 1 && <PlanCompareView plans={alternatives} />}
 
             {selectedItineraryId && (
               <motion.div
